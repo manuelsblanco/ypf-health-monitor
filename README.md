@@ -43,8 +43,8 @@ El panel muestra estado de las páginas revisadas, gráficos de carga e incidenc
 - Histórico compacto: rama `monitor-data`, hasta 90 días o 600 ejecuciones.
 - Informe y capturas más recientes: GitHub Pages.
 - Capturas y trazas por ejecución: artefactos de Actions, durante 14 días.
-- La publicación sucede antes del job `health-status`, que queda rojo cuando hay incidencias.
-- Un workflow rojo puede significar problemas del sitio; revisar el job que falló y el informe publicado.
+- La publicación sucede antes del job `health-status`. Por defecto, las incidencias del sitio se informan con advertencias y no hacen fallar el pipeline. Los errores técnicos del monitor o la publicación sí quedan rojos.
+- `health_policy=report` separa ejecución y salud: Actions puede estar verde y el sitio amarillo/rojo. `health_policy=strict` también hace fallar el pipeline por incidencias del sitio. La opción se puede elegir manualmente o mediante la variable de repositorio `HEALTH_POLICY` para ejecuciones programadas.
 - Informes con más de 6 horas se marcan como desactualizados.
 - El favicon es una copia del recurso oficial https://www.ypf.com/favicon.ico.
 
@@ -103,7 +103,9 @@ npm run check:health
 npx playwright show-trace results/ARCHIVO.zip
 ```
 
-`monitor` registra el informe; `check:health` devuelve código de salida no cero si la salud no es operativa. Así Actions puede publicar un incidente antes de quedar rojo.
+`monitor` continúa el recorrido ante incidencias y registra el informe; `check:health` aplica la política informativa por defecto. Para exigir salud operativa, usar `HEALTH_POLICY=strict npm run check:health`. Un informe inexistente/inválido o un error técnico siempre produce un código de salida distinto de cero. Se conserva la publicación del informe antes de evaluar el resultado final.
+
+No se aplica `continue-on-error` global: las incidencias del sitio son resultados de observación, mientras que un fallo de instalación, navegador, pruebas del monitor o despliegue debe seguir siendo visible como error técnico. El resumen de Actions enumera los problemas de todas las comprobaciones realizadas y señala la cobertura parcial.
 
 ## Publicación
 

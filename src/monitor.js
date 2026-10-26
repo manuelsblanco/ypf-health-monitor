@@ -3,6 +3,14 @@ import { mkdir } from 'node:fs/promises';
 import { assess, owned } from './health.js';
 
 export async function inspect(browser, target, viewport, config, outputDir) {
+  try { return await inspectPage(browser, target, viewport, config, outputDir); }
+  catch (error) {
+    return { targetId: target.id, name: target.name, url: target.url, viewport, status: 'failed', executionError: error.message,
+      checks: [{ id: 'monitor', status: 'failed', message: 'No se pudo ejecutar esta comprobación', details: [error.message] }],
+      data: { resourceErrors: [], thirdPartyErrors: [], pageErrors: [], consoleErrors: [], brokenImages: [], pendingImages: [], badStyles: [], domContentLoadedMs: null }, screenshot: null, trace: null };
+  }
+}
+async function inspectPage(browser, target, viewport, config, outputDir) {
   const context = await browser.newContext({
     viewport: viewport === 'mobile' ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     isMobile: viewport === 'mobile', hasTouch: viewport === 'mobile',
@@ -129,12 +137,14 @@ export async function inspect(browser, target, viewport, config, outputDir) {
     await page.screenshot({ path: `${outputDir}/${base}.png`, fullPage: true, timeout: 15000 });
     screenshot = `${base}.png`;
   } catch (error) {
-    data.navigationError = [data.navigationError, error.message].filter(Boolean).join('\n');
+    data.inspectionError = error.message;
   } finally {
     try { await context.tracing.stop({ path: `${outputDir}/${base}.zip` }); trace = `${base}.zip`; } catch { /* Context may be gone. */ }
     phase = 'closing';
     await context.close();
   }
   data.resourceErrors = [...new Map(data.resourceErrors.map(x => [JSON.stringify(x), x])).values()];
-  return { targetId: target.id, name: target.name, url: target.url, viewport, ...assess(data, target, config), data, screenshot, trace };
+  const assessment = assess(data, target, config);
+  if (data.inspectionError) { assessment.status = 'failed'; assessment.checks.push({ id: 'monitor', status: 'failed', message: 'La comprobación no pudo completarse', details: [data.inspectionError] }); }
+  return { targetId: target.id, name: target.name, url: target.url, viewport, ...assessment, executionError: data.inspectionError, data, screenshot, trace };
 }

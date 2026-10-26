@@ -26,7 +26,10 @@ try {
   report.infrastructureError = error.message;
 } finally {
   try { await browser?.close(); } catch (error) { report.status = 'failed'; report.infrastructureError = error.message; }
+  const executionErrors = report.results.filter(result => result.executionError);
+  if (executionErrors.length && !report.infrastructureError) report.infrastructureError = `${executionErrors.length} comprobaciones no pudieron ejecutarse por errores del monitor.`;
+  report.executionStatus = report.infrastructureError ? 'failed' : 'completed';
   await writeFile('results/latest.json', JSON.stringify(report, null, 2));
 }
 console.log(`${report.status.toUpperCase()} · ${report.results.length} controles · ${report.id}`);
-// Health failure is gated AFTER publishing, so users can see the incident.
+// Technical errors stay failures even in report-only health mode. Publication still happens first.

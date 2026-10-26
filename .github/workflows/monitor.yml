@@ -5,6 +5,11 @@ on:
     - cron: '17 */4 * * *'
   workflow_dispatch:
     inputs:
+      health_policy:
+        description: Informar incidencias o hacer fallar el pipeline por salud
+        type: choice
+        options: [report, strict]
+        default: report
       max_pages:
         description: Máximo de páginas para una prueba manual real
         type: choice
@@ -78,13 +83,11 @@ jobs:
             commit=$(printf 'Iniciar historial de salud\n' | git commit-tree "$tree")
           fi
           git push origin "$commit:refs/heads/monitor-data"
-      - name: Resumen de ejecución
+      - name: Resumen de ejecución e incidencias
         if: always()
-        shell: bash
-        run: |
-          if [ -f results/latest.json ]; then
-            node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("results/latest.json")); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Salud YPF: ${r.status}\n\n${r.results.length} controles de página/viewport.\n\nRevisar el panel publicado y los artefactos para el detalle.\n`);'
-          fi
+        env:
+          HEALTH_POLICY: ${{ inputs.health_policy || vars.HEALTH_POLICY || 'report' }}
+        run: node src/summary.js
       - name: Evidencias y trazas Playwright
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,5 +126,7 @@ jobs:
         with:
           name: ypf-health-${{ github.run_id }}
           path: results
-      - name: Marcar workflow como fallido ante incidencias
+      - name: Evaluar ejecución y aplicar política de salud
+        env:
+          HEALTH_POLICY: ${{ inputs.health_policy || vars.HEALTH_POLICY || 'report' }}
         run: npm run check:health
