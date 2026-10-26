@@ -21,16 +21,14 @@ if gh repo view "$repository" --json name >/dev/null 2>&1; then
 fi
 node tests/health.test.js
 node tests/crawl.test.js
-node tests/demo.test.js
-npm run demo
+node tests/metrics.test.js
 git add .github .gitignore README.md config.json package.json package-lock.json src tests web scripts
-git -c user.name="$login" -c user.email="$user_id+$login@users.noreply.github.com" commit -m 'Crear monitor YPF con dashboard, demo y GitHub Actions'
+git -c user.name="$login" -c user.email="$user_id+$login@users.noreply.github.com" commit -m 'Crear monitor YPF con dashboard y GitHub Actions'
 gh repo create "$repository" --public --source=. --remote=origin --push --description 'Prototipo de monitoreo web con Playwright, BFS/DFS, histórico JSON y dashboard de salud'
 gh api --method POST "repos/$repository/pages" -f build_type=workflow >/dev/null
 # La rama main se publica con CI y un recorrido inicial de hasta 3 páginas.
-# La demo no consulta YPF ni escribe el histórico real.
-if ! gh workflow run monitor.yml --repo "$repository" --ref main -f mode=demo -f strategy=bfs -f max_pages=3; then
-  echo "Repositorio creado. Cuando GitHub registre el workflow, ejecutá: gh workflow run monitor.yml --repo $repository --ref main -f mode=demo -f strategy=bfs -f max_pages=3" >&2
+if ! gh workflow run monitor.yml --repo "$repository" --ref main -f strategy=bfs -f max_pages=3; then
+  echo "Repositorio creado. Cuando GitHub registre el workflow, ejecutá: gh workflow run monitor.yml --repo $repository --ref main -f strategy=bfs -f max_pages=3" >&2
   exit 1
 fi
 printf 'Repositorio: https://github.com/%s\nActions: https://github.com/%s/actions\nPages (al completar deploy): https://%s.github.io/%s/\n' "$repository" "$repository" "$login" "$repo_name"

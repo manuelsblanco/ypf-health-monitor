@@ -1,14 +1,14 @@
 const labels = { healthy: 'Operativo', degraded: 'Con incidencias', failed: 'Fallo' };
-const colors = { healthy: '#71dfb7', degraded: '#ffd27a', failed: '#ff8d9e' };
+const colors = { healthy: '#167447', degraded: '#9b6800', failed: '#b42336' };
 const issueLabels = { images: 'Imágenes', css: 'CSS', javascript: 'JavaScript', links: 'Páginas', other: 'Otros' };
-const issueColors = { images: '#62b7ff', css: '#b59aff', javascript: '#ffd27a', links: '#ff8d9e', other: '#71dfb7' };
+const issueColors = { images: '#0451e4', css: '#3c3c3c', javascript: '#9b6800', links: '#b42336', other: '#167447' };
 const element = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
 const badge = status => element('span', labels[status] || status, `badge ${status}`);
 const date = value => new Date(value).toLocaleString('es-AR');
 const link = (text, href) => { const a = element('a', text); a.href = href; a.rel = 'noopener'; a.target = '_blank'; return a; };
 const seconds = value => Number.isFinite(value) ? `${(value / 1000).toFixed(2)} s` : 'Sin métrica';
 function svgElement(tag, attrs = {}, text) { const node = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value); if (text !== undefined) node.textContent = text; return node; }
-function selectRun(run) { document.querySelector('#selection').textContent = `${run.mode === 'demo' ? 'SIMULADO · ' : ''}${run.id} · ${date(run.timestamp)} · ${labels[run.status]} · ${run.metrics?.checkedPages ?? run.coverage?.checkedPages ?? '—'} páginas · ${seconds(run.metrics?.averageDomContentLoadedMs)} · ${run.metrics?.totalIssues ?? 'Sin métrica de'} incidencias`; }
+function selectRun(run) { document.querySelector('#selection').textContent = `${run.id} · ${date(run.timestamp)} · ${labels[run.status]} · ${run.metrics?.checkedPages ?? run.coverage?.checkedPages ?? '—'} páginas · ${seconds(run.metrics?.averageDomContentLoadedMs)} · ${run.metrics?.totalIssues ?? 'Sin métrica de'} incidencias`; }
 function chart(container, runs, kind) {
   container.replaceChildren();
   const valid = runs.filter(r => r.metrics && (kind !== 'latency' || Number.isFinite(r.metrics.averageDomContentLoadedMs)));
@@ -20,11 +20,11 @@ function chart(container, runs, kind) {
   const maxY = Math.ceil(maximum * 1.15);
   const y = value => top + plotH * (1 - value / maxY);
   const svg = svgElement('svg', { viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': `${kind === 'latency' ? 'Carga media en segundos' : 'Incidencias'}: ${valid.length} ejecuciones con métricas`, class: 'chart' });
-  for (let i = 0; i <= 4; i++) { const value = maxY * i / 4; svg.append(svgElement('line', { x1: left, x2: w - right, y1: y(value), y2: y(value), stroke: '#2a3b55', 'stroke-width': 1 }), svgElement('text', { x: left - 8, y: y(value) + 4, fill: '#9ab0d1', 'font-size': 11, 'text-anchor': 'end' }, value.toFixed(kind === 'latency' ? 1 : 0))); }
+  for (let i = 0; i <= 4; i++) { const value = maxY * i / 4; svg.append(svgElement('line', { x1: left, x2: w - right, y1: y(value), y2: y(value), stroke: '#e6e6e6', 'stroke-width': 1 }), svgElement('text', { x: left - 8, y: y(value) + 4, fill: '#626262', 'font-size': 11, 'text-anchor': 'end' }, value.toFixed(kind === 'latency' ? 1 : 0))); }
   if (kind === 'latency') {
     // Gaps remain gaps when older historical records lack metrics.
     let segment = [];
-    const flush = () => { if (segment.length) svg.append(svgElement('polyline', { points: segment.join(' '), fill: 'none', stroke: '#62b7ff', 'stroke-width': 2.5 })); segment = []; };
+    const flush = () => { if (segment.length) svg.append(svgElement('polyline', { points: segment.join(' '), fill: 'none', stroke: '#0451e4', 'stroke-width': 2.5 })); segment = []; };
     for (const run of runs) { if (!Number.isFinite(run.metrics?.averageDomContentLoadedMs)) flush(); else segment.push(`${x(run)},${y(run.metrics.averageDomContentLoadedMs / 1000)}`); } flush();
   }
   for (const run of valid) {
@@ -38,7 +38,7 @@ function chart(container, runs, kind) {
     }
     group.addEventListener('click', () => selectRun(run)); group.addEventListener('keydown', event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); selectRun(run); } }); svg.append(group);
   }
-  svg.append(svgElement('text', { x: left, y: h - 8, fill: '#9ab0d1', 'font-size': 11 }, new Date(start).toLocaleString('es-AR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })), svgElement('text', { x: w - right, y: h - 8, fill: '#9ab0d1', 'font-size': 11, 'text-anchor': 'end' }, new Date(end).toLocaleString('es-AR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })));
+  svg.append(svgElement('text', { x: left, y: h - 8, fill: '#626262', 'font-size': 11 }, new Date(start).toLocaleString('es-AR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })), svgElement('text', { x: w - right, y: h - 8, fill: '#626262', 'font-size': 11, 'text-anchor': 'end' }, new Date(end).toLocaleString('es-AR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })));
   container.append(svg);
   const legend = element('div', undefined, 'legend');
   const entries = kind === 'latency' ? Object.entries(labels) : Object.entries(issueLabels);
@@ -59,9 +59,18 @@ function renderHistory(history) {
   const timeline = document.querySelector('#timeline'); timeline.replaceChildren();
   for (const run of runs) { const block = element('button', '', `block ${run.status}`); block.type = 'button'; block.title = `${date(run.timestamp)} · ${labels[run.status]}`; block.setAttribute('aria-label', block.title); block.addEventListener('click', () => selectRun(run)); timeline.append(block); }
   const tbody = document.querySelector('#history'); tbody.replaceChildren();
-  for (const run of [...runs].reverse()) { const tr = element('tr'), state = element('td'), source = element('td'); state.append(badge(run.status)); if (run.runUrl) source.append(link('Ver en GitHub ↗', run.runUrl)); else { const b = element('button', `${run.mode === 'demo' ? 'Demo' : 'Local'} · ${run.id}`); b.type = 'button'; b.addEventListener('click', () => selectRun(run)); source.append(b); }
+  for (const run of [...runs].reverse()) { const tr = element('tr'), state = element('td'), source = element('td'); state.append(badge(run.status)); if (run.runUrl) source.append(link('Ver en GitHub ↗', run.runUrl)); else { const b = element('button', `Local · ${run.id}`); b.type = 'button'; b.addEventListener('click', () => selectRun(run)); source.append(b); }
     tr.append(element('td', date(run.timestamp)), state, element('td', String(run.metrics?.checkedPages ?? run.coverage?.checkedPages ?? '—')), element('td', seconds(run.metrics?.averageDomContentLoadedMs)), element('td', String(run.metrics?.totalIssues ?? 'Sin métrica')), source); tbody.append(tr); }
   document.querySelector('#selection').textContent = runs.length ? 'Seleccioná una ejecución en los gráficos, bloques o tabla.' : 'No hay muestras en este período.';
+}
+function copyButton(report, options = {}, label = 'Copiar diagnóstico para IA') {
+  const button = element('button', label, 'copy-diagnostic'); button.type = 'button';
+  button.addEventListener('click', async () => {
+    const text = HealthDiagnostics.buildDiagnosticText(report, { ...options, baseUrl: location.href });
+    try { if (!navigator.clipboard?.writeText) throw new Error('Clipboard no disponible'); await navigator.clipboard.writeText(text); button.textContent = 'Copiado'; document.querySelector('#copy-status').textContent = 'Diagnóstico copiado'; setTimeout(() => { button.textContent = label; }, 2000); }
+    catch { const dialog = document.querySelector('#copy-dialog'); const field = document.querySelector('#copy-text'); field.value = text; dialog.showModal(); field.focus(); field.select(); }
+  });
+  return button;
 }
 function renderChecks(latest) {
   const container = document.querySelector('#checks'); container.replaceChildren();
@@ -70,27 +79,26 @@ function renderChecks(latest) {
   document.querySelector('#no-checks').hidden = !!results.length;
   for (const result of results) {
     const card = element('article', undefined, 'card');
-    card.append(badge(result.status), element('h3', `${result.data.title || result.name} · ${result.viewport}`), link(result.url, result.url));
-    for (const check of result.checks) { const row = element('details', undefined, `check ${check.status}`); row.open = check.status !== 'healthy'; row.append(element('summary', `${labels[check.status]} · ${check.message}`)); if (check.details.length) row.append(element('pre', JSON.stringify(check.details, null, 2))); card.append(row); }
-    if (result.data.thirdPartyErrors?.length) { const details = element('details'); details.append(element('summary', `${result.data.thirdPartyErrors.length} fallos de terceros (informativos)`), element('pre', JSON.stringify(result.data.thirdPartyErrors, null, 2))); card.append(details); }
+    card.append(copyButton(latest, { result }), badge(result.status), element('h3', `${result.data.title || result.name} · ${result.viewport}`), link(result.url, result.url));
+    for (const check of result.checks) { const row = element('details', undefined, `check ${check.status}`); row.open = check.status !== 'healthy'; row.append(element('summary', `${labels[check.status]} · ${check.message}`)); if (check.details.length) row.append(element('pre', JSON.stringify(check.details, null, 2))); if (check.status !== 'healthy') row.append(copyButton(latest, { result, check }, 'Copiar este error')); card.append(row); }
+    if (result.data.thirdPartyErrors?.length) { const details = element('details'); details.append(element('summary', `${result.data.thirdPartyErrors.length} fallos de terceros (informativos)`), element('p', 'Son observaciones de red externas. Las cancelaciones no confirman por sí solas una falla del sitio.', 'muted'), copyButton(latest, { result, thirdPartyOnly: true }, 'Copiar errores de terceros'), element('pre', JSON.stringify(result.data.thirdPartyErrors, null, 2))); for (const error of result.data.thirdPartyErrors) { const hint = element('p', HealthDiagnostics.describeNetworkError(error).interpretation.join(' '), 'muted'); details.append(hint); } card.append(details); }
     if (result.data.unavailableInteractions?.length) card.append(element('p', `Controles no disponibles: ${result.data.unavailableInteractions.join(', ')}. Sus estados no fueron verificados.`, 'muted'));
     if (result.screenshot) card.append(link('Ver captura ↗', `evidence/${result.screenshot}`));
-    else if (latest.mode === 'demo') card.append(element('p', 'Ejemplo simulado: no se generaron capturas ni trazas reales.', 'muted'));
     container.append(card);
   }
 }
 async function start() {
-  const data = globalThis.__MONITOR_DEMO__ || await (async () => { const responses = await Promise.all(['latest', 'history'].map(async name => { const response = await fetch(`data/${name}.json`, { cache: 'no-store' }); if (!response.ok) throw new Error(`No se pudo cargar ${name}: HTTP ${response.status}`); return response.json(); })); return { latest: responses[0], history: responses[1] }; })();
+  const data = await (async () => { const responses = await Promise.all(['latest', 'history'].map(async name => { const response = await fetch(`data/${name}.json`, { cache: 'no-store' }); if (!response.ok) throw new Error(`No se pudo cargar ${name}: HTTP ${response.status}`); return response.json(); })); return { latest: responses[0], history: responses[1] }; })();
   const { latest, history } = data;
-  const demo = latest.mode === 'demo'; document.querySelector('#demo-banner').hidden = !demo;
   const summary = document.querySelector('#summary'); summary.replaceChildren();
-  const stale = !demo && Date.now() - Date.parse(latest.timestamp) > 6 * 3600000;
-  summary.append(badge(latest.status), element('h2', demo ? 'Último estado simulado' : stale ? 'Informe desactualizado' : 'Estado de las páginas revisadas'), element('p', date(latest.timestamp)));
+  const stale = Date.now() - Date.parse(latest.timestamp) > 6 * 3600000;
+  summary.append(badge(latest.status), element('h2', stale ? 'Informe desactualizado' : 'Estado de las páginas revisadas'), element('p', date(latest.timestamp)));
   if (latest.runUrl) summary.append(link('Ver ejecución en GitHub ↗', latest.runUrl));
   if (latest.infrastructureError) summary.append(element('pre', latest.infrastructureError));
   if (latest.crawl) { const c = latest.crawl; summary.append(element('p', `${c.strategy.toUpperCase()} · ${c.checkedPages} páginas revisadas de ${c.discoveredPages} descubiertas · ${c.complete ? 'Alcance configurado completado' : 'Recorrido parcial: ' + c.stopReason}`), element('p', `${c.externalDiscovered} enlaces externos descubiertos · ${c.externalChecks.length} comprobados. Los pendientes no se consideran verificados.`, 'muted')); if (c.externalChecks.length) { const details = element('details'); details.append(element('summary', 'Resultados externos'), element('pre', JSON.stringify(c.externalChecks, null, 2))); summary.append(details); } }
+  const allCopy = copyButton(latest, {}, 'Copiar informe para IA'); allCopy.id = 'copy-all'; document.querySelector('#copy-all').replaceWith(allCopy);
   renderHistory(history); renderChecks(latest);
   document.querySelector('#period').addEventListener('change', () => renderHistory(history)); document.querySelector('#state-filter').addEventListener('change', () => renderChecks(latest));
-  const download = document.querySelector('#export'); download.disabled = false; download.addEventListener('click', () => { const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); const a = element('a'); a.href = url; a.download = `ypf-health-${demo ? 'DEMO' : 'live'}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); });
+  const download = document.querySelector('#export'); download.disabled = false; download.addEventListener('click', () => { const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); const a = element('a'); a.href = url; a.download = 'ypf-health-live.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); });
 }
 start().catch(error => { document.querySelector('#summary').replaceChildren(element('h2', 'Sin datos disponibles'), element('p', error.message)); });

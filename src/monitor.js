@@ -11,31 +11,44 @@ export async function inspect(browser, target, viewport, config, outputDir) {
   });
   const page = await context.newPage();
   page.setDefaultTimeout(config.timeoutMs);
-  const data = { resourceErrors: [], pageErrors: [], consoleErrors: [], thirdPartyErrors: [],
+  const observationStart = Date.now();
+  let phase = 'navigation';
+  const responses = new WeakMap();
+  const requestContext = req => {
+    const chain = []; let current = req;
+    while (current) { chain.unshift({ url: current.url(), status: responses.get(current)?.status ?? null }); current = current.redirectedFrom(); }
+    let frameUrl = null; try { frameUrl = req.frame().url(); } catch {}
+    return { method: req.method(), phase, elapsedMs: Date.now() - observationStart, frameUrl, redirectChain: chain, response: responses.get(req) || null, timing: req.timing() };
+  };
+  const data = { pageErrorDetails: [], cleanupCancellations: [], resourceErrors: [], pageErrors: [], consoleErrors: [], thirdPartyErrors: [],
     badStyles: [], brokenImages: [], missingSelectors: [], textLength: 0, loadedStylesheets: 0,
     httpStatus: null, finalUrl: target.url, title: '', domContentLoadedMs: 0 };
   const hosts = [...new Set([...config.resourceHosts, new URL(target.url).hostname])];
   const ignored = config.ignoreUrlPatterns.map(x => new RegExp(x));
   const capture = entry => {
     if (ignored.some(pattern => pattern.test(entry.url))) return;
+    if (phase === 'closing' && entry.error?.includes('ERR_ABORTED')) { data.cleanupCancellations.push(entry); return; }
     // Follow the original URL so redirects to an external error page still count as first-party failures.
     (owned(entry.originalUrl || entry.url, hosts, config.includeResourceSubdomains) ? data.resourceErrors : data.thirdPartyErrors).push(entry);
   };
   const original = request => { let r = request; while (r.redirectedFrom()) r = r.redirectedFrom(); return r.url(); };
-  page.on('requestfailed', req => capture({ url: req.url(), originalUrl: original(req), type: req.resourceType(), error: req.failure()?.errorText }));
+  page.on('requestfailed', req => capture({ url: req.url(), originalUrl: original(req), type: req.resourceType(), error: req.failure()?.errorText, ...requestContext(req) }));
   page.on('response', response => {
     const req = response.request(), type = req.resourceType(), url = response.url();
-    const mime = response.headers()['content-type'] || '';
+    const headers = response.headers();
+    const mime = headers['content-type'] || '';
+    const safeHeaders = Object.fromEntries(['content-type','content-length','x-content-type-options','cross-origin-resource-policy','access-control-allow-origin','cache-control'].filter(key => headers[key]).map(key => [key, headers[key]]));
+    responses.set(req, { status: response.status(), mime, headers: safeHeaders });
     const wrongMime = (type === 'stylesheet' && !mime.includes('text/css')) ||
       (type === 'script' && mime.includes('text/html')) ||
       (type === 'image' && mime.includes('text/html')) ||
       (type === 'media' && mime.includes('text/html'));
-    if (response.status() >= 400 || (response.status() < 300 && wrongMime)) capture({ url, originalUrl: original(req), type, status: response.status(), error: wrongMime ? `MIME inesperado: ${mime}` : `HTTP ${response.status()}` });
+    if (response.status() >= 400 || (response.status() < 300 && wrongMime)) capture({ url, originalUrl: original(req), type, status: response.status(), error: wrongMime ? `MIME inesperado: ${mime}` : `HTTP ${response.status()}`, ...requestContext(req) });
   });
-  page.on('pageerror', error => data.pageErrors.push(error.message));
+  page.on('pageerror', error => { data.pageErrors.push(error.message); data.pageErrorDetails.push({ name: error.name, message: error.message, stack: error.stack, phase, elapsedMs: Date.now() - observationStart }); });
   page.on('console', message => {
     // Third-party console noise remains visible in request diagnostics, but does not mark YPF down.
-    if (message.type() === 'error' && owned(message.location().url, hosts, config.includeResourceSubdomains)) data.consoleErrors.push({ message: message.text(), url: message.location().url });
+    if (message.type() === 'error' && owned(message.location().url, hosts, config.includeResourceSubdomains)) data.consoleErrors.push({ message: message.text(), url: message.location().url, location: message.location(), phase, elapsedMs: Date.now() - observationStart });
   });
   await mkdir(outputDir, { recursive: true });
   const base = `${target.id}-${createHash('sha256').update(target.url).digest('hex').slice(0, 12)}-${viewport}`;
@@ -50,8 +63,11 @@ export async function inspect(browser, target, viewport, config, outputDir) {
       data.httpStatus = response?.status() ?? null;
     } catch (error) { data.navigationError = error.message; }
     data.domContentLoadedMs = Date.now() - start;
+    phase = 'settling';
+    data.environment = { browser: context.browser()?.version(), userAgent: await page.evaluate(() => navigator.userAgent), viewport: page.viewportSize(), locale: 'es-AR' };
     await page.waitForTimeout(config.settleMs);
     // Only explicitly allowlisted, non-submitting controls; never click arbitrary links/buttons.
+    phase = 'interaction';
     data.interactions = [];
     data.unavailableInteractions = [];
     await collectLinks();
@@ -75,6 +91,7 @@ export async function inspect(browser, target, viewport, config, outputDir) {
       }
     }
     // Bounded scroll activates lazy resources. A budget is required for infinite scrolling pages.
+    phase = 'scrolling';
     const scrollStarted = Date.now();
     data.scrollComplete = false;
     for (let step = 0; step < (config.crawl?.maxScrollSteps ?? 20); step++) {
@@ -89,6 +106,7 @@ export async function inspect(browser, target, viewport, config, outputDir) {
     }
     await page.waitForTimeout(1000);
     await page.evaluate(() => window.scrollTo(0, 0));
+    phase = 'observation';
     Object.assign(data, await page.evaluate(() => ({
       headingSamples: [...document.querySelectorAll('h1,h2,[role=heading]')].slice(0, 30).map(el => el.innerText.trim().slice(0, 500)),
       title: document.title, finalUrl: location.href, textLength: document.body?.innerText.trim().length || 0,
@@ -107,12 +125,14 @@ export async function inspect(browser, target, viewport, config, outputDir) {
     for (const selector of target.requiredPresentSelectors || []) {
       if (!await page.locator(selector).count()) data.missingSelectors.push(selector);
     }
+    phase = 'evidence';
     await page.screenshot({ path: `${outputDir}/${base}.png`, fullPage: true, timeout: 15000 });
     screenshot = `${base}.png`;
   } catch (error) {
     data.navigationError = [data.navigationError, error.message].filter(Boolean).join('\n');
   } finally {
     try { await context.tracing.stop({ path: `${outputDir}/${base}.zip` }); trace = `${base}.zip`; } catch { /* Context may be gone. */ }
+    phase = 'closing';
     await context.close();
   }
   data.resourceErrors = [...new Map(data.resourceErrors.map(x => [JSON.stringify(x), x])).values()];

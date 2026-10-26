@@ -37,7 +37,10 @@ export async function crawl({ browser, config, inspect, outputDir }) {
     visited.add(current.url);
     const links = new Set();
     for (const viewport of current.target.viewports) {
-      const target = current.depth === 0 ? { ...current.target, url: current.url } : { ...current.target, ...opts.discoveredPage, url: current.url };
+      const target = current.depth === 0 ? { ...current.target, url: current.url } : {
+        id: current.target.id, name: current.target.name, viewports: current.target.viewports,
+        ...opts.discoveredPage, requiredPresentSelectors: opts.discoveredPage?.requiredPresentSelectors ?? [], url: current.url,
+      };
       const result = await inspect(browser, target, viewport, config, outputDir);
       result.depth = current.depth;
       results.push(result);

@@ -14,8 +14,6 @@
     "preview": "node src/serve.js",
     "test:browser": "node --test tests/browser.integration.js",
     "monitor:dfs": "CRAWL_STRATEGY=dfs node src/run.js",
-    "demo": "node src/demo.js",
-    "preview:demo": "node src/serve.js --demo",
     "test:dashboard": "node --test tests/dashboard.integration.js"
   },
   "dependencies": {

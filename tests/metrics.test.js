@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDemo } from '../src/demo-data.js';
+import { createDashboardFixture } from './dashboard-data.js';
 import { summarizeReport } from '../src/metrics.js';
-test('demo coherente, etiquetada y con fallos de ejemplo', () => {
-  const { latest, history } = createDemo(new Date('2026-10-26T12:00:00Z'));
-  assert.equal(latest.mode, 'demo'); assert.equal(history.length, 42);
-  assert.ok(history.every(r => r.mode === 'demo' && r.metrics));
+test('fixture de pruebas coherente y con fallos controlados', () => {
+  const { latest, history } = createDashboardFixture(new Date('2026-10-26T12:00:00Z'));
+  assert.equal(latest.mode, 'test'); assert.equal(history.length, 42);
+  assert.ok(history.every(r => r.mode === 'test' && r.metrics));
   assert.deepEqual([...new Set(history.map(r => r.status))].sort(), ['degraded', 'failed', 'healthy']);
   assert.equal(history.at(-1).id, latest.id);
   assert.equal(history.at(-1).status, latest.status);

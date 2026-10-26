@@ -30,3 +30,16 @@ test('incluye subdominios de YPF sin aceptar dominios parecidos', () => {
   assert.equal(normalizeUrl('https://inversores.ypf.com/', 'https://www.ypf.com/', opts).reason, undefined);
   assert.equal(normalizeUrl('https://ypf.com.evil.test/', 'https://www.ypf.com/', opts).reason, 'external');
 });
+
+test('las páginas descubiertas no heredan requisitos específicos de la portada', async () => {
+  const cfg = config({ maxPages: 2, discoveredPage: { requiredSelectors: ['body'], minimumLoadedStylesheets: 1 } });
+  cfg.targets[0].requiredPresentSelectors = ['header'];
+  cfg.targets[0].requiredSelectors = ['main'];
+  cfg.targets[0].titlePattern = 'Portada exclusiva';
+  const inspected = [];
+  await crawl({ browser: {}, config: cfg, outputDir: '/tmp', inspect: async (...args) => { inspected.push(args[1]); return fakeInspect(...args); } });
+  assert.deepEqual(inspected[0].requiredPresentSelectors, ['header']);
+  assert.deepEqual(inspected[1].requiredPresentSelectors, []);
+  assert.deepEqual(inspected[1].requiredSelectors, ['body']);
+  assert.equal(inspected[1].titlePattern, undefined);
+});

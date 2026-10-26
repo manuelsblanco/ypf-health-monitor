@@ -5,11 +5,6 @@ on:
     - cron: '17 */4 * * *'
   workflow_dispatch:
     inputs:
-      mode:
-        description: Publicar demo simulada o ejecutar monitoreo real
-        type: choice
-        options: [live, demo]
-        default: live
       max_pages:
         description: Máximo de páginas para una prueba manual real
         type: choice
@@ -43,12 +38,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Verificar lógica del monitor
         run: npm test
-      - name: Construir demo y verificar dashboard en Chromium
-        run: |
-          npm run demo
-          npm run test:dashboard
+      - name: Verificar dashboard en Chromium
+        run: npm run test:dashboard
       - name: Recuperar historial persistente
-        if: inputs.mode != 'demo'
         shell: bash
         run: |
           set -euo pipefail
@@ -62,23 +54,13 @@ jobs:
             echo '[]' > history/history.json
           fi
       - name: Recorrer y medir el sitio
-        if: inputs.mode != 'demo'
         env:
           CRAWL_STRATEGY: ${{ inputs.strategy || 'bfs' }}
           MAX_PAGES: ${{ inputs.max_pages || (github.event_name == 'push' && '3') || '30' }}
         run: npm run monitor
       - name: Generar dashboard
-        if: inputs.mode != 'demo'
         run: npm run build
-      - name: Preparar publicación de demostración
-        if: inputs.mode == 'demo'
-        run: |
-          mkdir -p results public/demo
-          cp -R public-demo/. public/
-          cp -R public-demo/. public/demo/
-          cp public-demo/data/latest.json results/latest.json
       - name: Guardar historial sin modificar el código
-        if: inputs.mode != 'demo'
         shell: bash
         env:
           GIT_AUTHOR_NAME: github-actions[bot]
@@ -130,7 +112,7 @@ jobs:
         uses: actions/deploy-pages@v4
   health-status:
     needs: [monitor, deploy]
-    if: always() && needs.monitor.result == 'success' && inputs.mode != 'demo'
+    if: always() && needs.monitor.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
