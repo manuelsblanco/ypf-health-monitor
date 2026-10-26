@@ -1,3 +1,4 @@
+import { probeExternal } from './probe.js';
 import { overall, owned } from './health.js';
 const binary = /\.(?:pdf|zip|rar|7z|docx?|xlsx?|pptx?|csv|mp4|webm|mp3|png|jpe?g|webp|gif|svg|ico|woff2?|ttf|css|js|xml|json)$/i;
 export function normalizeUrl(value, base, options) {
@@ -66,12 +67,7 @@ export async function crawl({ browser, config, inspect, outputDir }) {
     const context = await browser.newContext();
     try {
       for (const url of [...external].slice(0, opts.maxExternalLinks)) {
-        try {
-          const response = await context.request.get(url, { timeout: Math.min(config.timeoutMs, 15000), maxRedirects: 5 });
-          const status = response.status();
-          externalChecks.push({ url, finalUrl: response.url(), httpStatus: status, status: status >= 400 || /\/error(?:\.|\/|\?|$)/i.test(response.url()) ? 'degraded' : 'healthy' });
-          await response.dispose();
-        } catch (error) { externalChecks.push({ url, status: 'degraded', error: error.message }); }
+        externalChecks.push(await probeExternal(context.request, url, config));
       }
     } finally { await context.close(); }
   }

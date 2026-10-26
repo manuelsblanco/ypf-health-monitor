@@ -1,16 +1,26 @@
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
+import { applyConfirmation, groupResourceErrors } from './confirmation.js';
 import { assess, owned } from './health.js';
 
 export async function inspect(browser, target, viewport, config, outputDir) {
-  try { return await inspectPage(browser, target, viewport, config, outputDir); }
-  catch (error) {
-    return { targetId: target.id, name: target.name, url: target.url, viewport, status: 'failed', executionError: error.message,
-      checks: [{ id: 'monitor', status: 'failed', message: 'No se pudo ejecutar esta comprobación', details: [error.message] }],
-      data: { resourceErrors: [], thirdPartyErrors: [], pageErrors: [], consoleErrors: [], brokenImages: [], pendingImages: [], badStyles: [], domContentLoadedMs: null }, screenshot: null, trace: null };
+  const observations = [];
+  const maxAttempts = Math.max(1, Math.min(3, config.confirmation?.attempts ?? 2));
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try { observations.push(await inspectPage(browser, target, viewport, config, outputDir, attempt)); }
+    catch (error) {
+      observations.push({ targetId: target.id, name: target.name, url: target.url, viewport, status: 'failed', executionError: error.message,
+        checks: [{ id: 'monitor', status: 'failed', message: 'No se pudo ejecutar esta comprobación', details: [error.message] }],
+        data: { resourceErrors: [], thirdPartyErrors: [], pageErrors: [], consoleErrors: [], brokenImages: [], pendingImages: [], badStyles: [], domContentLoadedMs: null }, screenshot: null, trace: null });
+    }
+    const current = observations.at(-1);
+    if (current.status === 'healthy' || current.executionError || attempt === maxAttempts) break;
+    await new Promise(resolve => setTimeout(resolve, config.confirmation?.delayMs ?? 1000));
   }
+  return applyConfirmation(observations, maxAttempts > 1);
 }
-async function inspectPage(browser, target, viewport, config, outputDir) {
+
+async function inspectPage(browser, target, viewport, config, outputDir, attempt) {
   const context = await browser.newContext({
     viewport: viewport === 'mobile' ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
     isMobile: viewport === 'mobile', hasTouch: viewport === 'mobile',
@@ -61,7 +71,7 @@ async function inspectPage(browser, target, viewport, config, outputDir) {
     if (message.type() === 'error' && owned(message.location().url, hosts, config.includeResourceSubdomains)) data.consoleErrors.push({ message: message.text(), url: message.location().url, location: message.location(), phase, elapsedMs: Date.now() - observationStart });
   });
   await mkdir(outputDir, { recursive: true });
-  const base = `${target.id}-${createHash('sha256').update(target.url).digest('hex').slice(0, 12)}-${viewport}`;
+  const base = `${target.id}-${createHash('sha256').update(target.url).digest('hex').slice(0, 12)}-${viewport}-attempt-${attempt}`;
   let screenshot = null, trace = null;
   const discoveredLinks = new Set();
   const collectLinks = async () => { for (const href of await page.locator('a[href],area[href]').evaluateAll(elements => elements.map(a => a.href))) discoveredLinks.add(href); };
@@ -117,7 +127,16 @@ async function inspectPage(browser, target, viewport, config, outputDir) {
     await page.waitForTimeout(1000);
     await page.evaluate(() => window.scrollTo(0, 0));
     phase = 'observation';
+    data.imageDecodeChecks = await page.evaluate(async () => {
+      const candidates = [...document.images].filter(img => img.currentSrc && img.complete && !img.naturalWidth).slice(0, 100);
+      return Promise.all(candidates.map(async img => {
+        const url = img.currentSrc;
+        try { await Promise.race([img.decode(), new Promise((resolve, reject) => setTimeout(() => reject(new Error('Tiempo de decodificación agotado')), 2000))]); return { url, decoded: true }; }
+        catch (error) { return { url, decoded: false, error: error.message, stable: img.currentSrc === url && img.complete, timedOut: error.message === 'Tiempo de decodificación agotado' }; }
+      }));
+    });
     Object.assign(data, await page.evaluate(() => ({
+      accessBlocked: /^the requested url was rejected/i.test(document.body?.innerText.trim() || ''),
       headingSamples: [...document.querySelectorAll('h1,h2,[role=heading]')].slice(0, 30).map(el => el.innerText.trim().slice(0, 500)),
       title: document.title, finalUrl: location.href, textLength: document.body?.innerText.trim().length || 0,
       loadedStylesheets: document.styleSheets.length,
@@ -128,6 +147,10 @@ async function inspectPage(browser, target, viewport, config, outputDir) {
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 10,
       pendingImages: [...document.images].filter(i => i.currentSrc && !i.complete).map(i => i.currentSrc),
     })));
+    const decoded = new Set(data.imageDecodeChecks.filter(item => item.decoded).map(item => item.url));
+    const decodeFailures = new Set(data.imageDecodeChecks.filter(item => !item.decoded && item.stable && !item.timedOut).map(item => item.url));
+    data.unverifiedImages = data.brokenImages.filter(url => !decoded.has(url) && !decodeFailures.has(url));
+    data.brokenImages = data.brokenImages.filter(url => decodeFailures.has(url));
     data.links = [...new Set([...discoveredLinks, ...data.links])];
     for (const selector of target.requiredSelectors) {
       if (!await page.locator(selector).first().isVisible()) data.missingSelectors.push(selector);
@@ -145,7 +168,10 @@ async function inspectPage(browser, target, viewport, config, outputDir) {
     phase = 'closing';
     await context.close();
   }
-  data.resourceErrors = [...new Map(data.resourceErrors.map(x => [JSON.stringify(x), x])).values()];
+  data.resourceErrorEvents = data.resourceErrors;
+  data.resourceErrors = groupResourceErrors(data.resourceErrorEvents);
+  data.thirdPartyErrorEvents = data.thirdPartyErrors;
+  data.thirdPartyErrors = groupResourceErrors(data.thirdPartyErrorEvents);
   data.loadedImageResources = [...loadedImages];
   const assessment = assess(data, target, config);
   if (data.inspectionError) { assessment.status = 'failed'; assessment.checks.push({ id: 'monitor', status: 'failed', message: 'La comprobación no pudo completarse', details: [data.inspectionError] }); }

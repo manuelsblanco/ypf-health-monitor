@@ -21,3 +21,7 @@ test('métricas no duplican el mismo recurso en red y en DOM', () => {
 test('sin observación de tiempo no se inventa una latencia de cero', () => {
   assert.equal(summarizeReport({ results: [] }).averageDomContentLoadedMs, null);
 });
+test('no usa el tiempo de una pantalla bloqueada como latencia real del sitio', () => {
+  const metrics = summarizeReport({ results: [{ url: 'https://example.test/', observationStatus: 'blocked', data: { domContentLoadedMs: 100 }, checks: [] }] });
+  assert.equal(metrics.averageDomContentLoadedMs, null);
+});

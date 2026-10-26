@@ -18,3 +18,10 @@ test('diagnóstico incluye contexto, pruebas y límites sin inventar datos ausen
   assert.match(text, /No capturado en esta ejecución/); assert.ok(!text.includes('private-id'));
   assert.match(text, /hipótesis/); assert.match(text, /2026-10-26/);
 });
+test('copiar un error de imágenes también incluye los eventos ORB relacionados', () => {
+  const url = 'https://example.test/image.webp';
+  const check = { id: 'images', status: 'degraded', message: 'Imagen no decodificada', details: [url] };
+  const result = { url: 'https://example.test/', viewport: 'desktop', status: 'degraded', checks: [check], data: { resourceErrors: [{ url, originalUrl: url, type: 'image', error: 'net::ERR_BLOCKED_BY_ORB' }], thirdPartyErrors: [] } };
+  const copied = buildDiagnosticText({ id: 'r', results: [result] }, { result, check });
+  assert.match(copied, /ERR_BLOCKED_BY_ORB/); assert.match(copied, /first-party/); assert.match(copied, /overallFindings/);
+});

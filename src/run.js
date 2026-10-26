@@ -28,6 +28,10 @@ try {
   try { await browser?.close(); } catch (error) { report.status = 'failed'; report.infrastructureError = error.message; }
   const executionErrors = report.results.filter(result => result.executionError);
   if (executionErrors.length && !report.infrastructureError) report.infrastructureError = `${executionErrors.length} comprobaciones no pudieron ejecutarse por errores del monitor.`;
+  const nonHealthy = report.results.filter(result => result.status !== 'healthy');
+  report.observationStatus = report.results.length && report.results.every(result => result.observationStatus === 'blocked') ? 'blocked' : nonHealthy.length && nonHealthy.every(result => ['blocked', 'unconfirmed'].includes(result.observationStatus)) ? 'partial-observation' : 'completed';
+  report.blockedChecks = report.results.filter(result => result.observationStatus === 'blocked').length;
+  report.unconfirmedChecks = report.results.filter(result => result.observationStatus === 'unconfirmed').length;
   report.executionStatus = report.infrastructureError ? 'failed' : 'completed';
   await writeFile('results/latest.json', JSON.stringify(report, null, 2));
 }

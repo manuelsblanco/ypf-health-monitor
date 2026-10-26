@@ -5,10 +5,12 @@ import { join } from 'node:path';
 import { inspect } from '../src/monitor.js';
 export async function browserSuite(browser) {
   const outputDir = await mkdtemp(join(tmpdir(), 'ypf-health-test-'));
-  const config = { timeoutMs: 10000, settleMs: 100, slowPageMs: 10000, resourceHosts: ['fixture.test'], ignoreUrlPatterns: [], crawl: { maxScrollSteps: 3, maxScrollMs: 1000, safeInteractions: [] } };
+  const config = { confirmation: { attempts: 2, delayMs: 10 }, timeoutMs: 10000, settleMs: 100, slowPageMs: 10000, resourceHosts: ['fixture.test'], ignoreUrlPatterns: [], crawl: { maxScrollSteps: 3, maxScrollMs: 1000, safeInteractions: [] } };
   const target = { id: 'fixture', name: 'YPF fixture', url: 'https://fixture.test/', titlePattern: 'YPF', minimumTextLength: 10, minimumLoadedStylesheets: 1, requiredSelectors: ['main'] };
   const run = async mode => {
+    let attempts = 0;
     const wrapped = { newContext: async options => {
+      attempts++;
       const context = await browser.newContext(options);
       await context.route('https://fixture.test/**', async route => {
         const path = new URL(route.request().url()).pathname;
@@ -16,8 +18,9 @@ export async function browserSuite(browser) {
         if (path === '/error.html') return route.fulfill({ contentType: 'text/html', body: '<h1>Página no disponible</h1>' });
         if (path === '/style.css' && mode === 'css-html') return route.fulfill({ contentType: 'text/html', body: '<h1>Página de error en lugar de CSS</h1>' });
         if (path === '/style.css') return route.fulfill({ contentType: 'text/css', body: 'body { margin: 0; background: #fff; }' });
-        if (path === '/image.svg') return route.fulfill({ status: mode === 'image-broken' ? 404 : 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="red"/></svg>' });
+        if (path === '/image.svg') return route.fulfill({ status: mode === 'image-broken' || mode === 'transient-image' && attempts === 1 ? 404 : 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="red"/></svg>' });
         if (path === '/app.js') return route.fulfill({ contentType: 'application/javascript', body: `setTimeout(() => { const a = document.createElement('a'); a.href='/dynamic'; a.textContent='Enlace dinámico'; document.querySelector('main').append(a); }, 20); ${mode === 'js-error' ? 'throw new Error("Fixture JS failure");' : ''}` });
+        if (mode === 'blocked') return route.fulfill({ contentType: 'text/html', body: '<title>Request Rejected</title>The requested URL was rejected. Please consult your administrator.' });
         return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>YPF test</title><link rel="stylesheet" href="/style.css"><main><h1>Contenido principal YPF de prueba</h1><img src="/image.svg"><script src="/app.js"></script></main>' });
       });
       return context;
@@ -33,6 +36,8 @@ export async function browserSuite(browser) {
     const cssHtml = await run('css-html'); assert.equal(cssHtml.status, 'failed'); assert.ok(cssHtml.data.resourceErrors.some(e => e.response?.mime.includes('text/html') && e.response.status === 200));
     const img = await run('image-broken'); assert.equal(img.status, 'degraded'); assert.ok(img.data.resourceErrors.some(e => e.type === 'image' && e.status === 404));
     const js = await run('js-error'); assert.equal(js.status, 'degraded'); assert.ok(js.data.pageErrors.length); assert.ok(js.data.pageErrorDetails[0].stack.includes('Fixture JS failure')); assert.ok(js.data.environment.browser);
-    return { passed: 5, checks: ['Página saludable y enlace dinámico', 'CSS redirigido a página de error', 'HTML recibido en lugar de CSS', 'Imagen 404', 'Excepción JavaScript'], reports: { healthy: good.status, css: css.status, image: img.status, javascript: js.status } };
+    const recovered = await run('transient-image'); assert.equal(recovered.status, 'healthy'); assert.equal(recovered.observationStatus, 'recovered-on-retry'); assert.equal(recovered.confirmation.attemptCount, 2);
+    const blocked = await run('blocked'); assert.equal(blocked.observationStatus, 'blocked'); assert.equal(blocked.status, 'degraded'); assert.ok(!blocked.checks.some(c => c.id === 'styles'));
+    return { passed: 7, checks: ['Página saludable y enlace dinámico', 'CSS redirigido a página de error', 'HTML recibido en lugar de CSS', 'Imagen 404', 'Excepción JavaScript', 'Imagen transitoria recuperada al reintentar', 'Request Rejected sin falso fallo de CSS'], reports: { healthy: good.status, css: css.status, image: img.status, javascript: js.status } };
   } finally { await rm(outputDir, { recursive: true, force: true }); }
 }

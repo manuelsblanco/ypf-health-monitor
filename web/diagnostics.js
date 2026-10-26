@@ -34,14 +34,27 @@
       const checks = options.check ? [options.check] : (result.checks || []).filter(c => c.status !== 'healthy');
       const own = (data.resourceErrors || []).map(error => ({ ...error, scope: 'first-party' }));
       const thirdParty = (data.thirdPartyErrors || []).map(error => ({ ...error, scope: 'third-party' }));
-      const network = options.thirdPartyOnly ? thirdParty : options.check ? options.check.details.filter(x => x && typeof x === 'object' && x.url) : [...own, ...thirdParty];
+      let network = [...own, ...thirdParty];
+      if (options.thirdPartyOnly) network = thirdParty;
+      else if (options.check) {
+        const details = options.check.details || [];
+        const urls = new Set(details.flatMap(item => typeof item === 'string' ? [item] : [item?.url, item?.originalUrl].filter(Boolean)));
+        if (['images', 'pending-images', 'resources', 'styles'].includes(options.check.id)) {
+          const related = network.filter(error => urls.has(error.url) || urls.has(error.originalUrl) || error.redirectChain?.some(step => urls.has(step.url)));
+          const direct = details.filter(item => item && typeof item === 'object' && item.url);
+          network = [...new Map([...direct, ...related].map(error => [[error.url, error.originalUrl, error.type, error.error, error.phase, error.elapsedMs].join('|'), error])).values()];
+        }
+      }
       return {
         page: result.url, title: data.title, viewport: result.viewport, observedStatus: result.status,
         environment: data.environment || 'No capturado en esta ejecución',
         httpStatus: data.httpStatus, finalUrl: data.finalUrl, domContentLoadedMs: data.domContentLoadedMs,
+        observationStatus: result.observationStatus, confirmation: result.confirmation,
+        diagnosticSelection: options.thirdPartyOnly ? 'third-party' : options.check?.id || 'page',
+        networkEvidenceNote: network.length ? 'Errores de red relacionados incluidos' : 'Sin eventos de red incluidos para esta selección; no implica ausencia de errores en el resto del informe',
         checks: options.thirdPartyOnly ? [] : checks,
         networkErrors: network.slice(0, 100).map(error => ({ ...error, guidance: describeNetworkError(error) })),
-        networkErrorsTotal: network.length, networkErrorsTruncated: network.length > 100,
+        networkErrorsTotal: network.length, networkEventCount: network.reduce((count, error) => count + (error.occurrences || 1), 0), networkErrorsTruncated: network.length > 100,
         javascript: options.thirdPartyOnly ? [] : data.pageErrorDetails || data.pageErrors || [],
         console: options.thirdPartyOnly ? [] : data.consoleErrors || [],
         cancelledDuringCleanup: data.cleanupCancellations || [],
@@ -52,6 +65,7 @@
     });
     const payload = sanitize({ schemaVersion: 1, runId: report.id, measuredAtUtc: report.timestamp, runUrl: report.runUrl,
       observedStatus: report.status, coverage: report.crawl ? { strategy: report.crawl.strategy, checkedPages: report.crawl.checkedPages, discoveredPages: report.crawl.discoveredPages, complete: report.crawl.complete, stopReason: report.crawl.stopReason } : null,
+      overallFindings: (report.results || []).filter(result => result.status !== 'healthy').map(result => ({ page: result.url, viewport: result.viewport, status: result.status, observationStatus: result.observationStatus, checks: (result.checks || []).filter(check => check.status !== 'healthy').map(check => ({ id: check.id, message: check.message })) })),
       infrastructureError: report.infrastructureError, pages: records });
     return [
       '# Diagnóstico de salud web · YPF',

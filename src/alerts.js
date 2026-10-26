@@ -1,3 +1,4 @@
+import { accessIsBlocked, signalFor } from './confirmation.js';
 import { createHash } from 'node:crypto';
 import '../web/diagnostics.js';
 const markerPattern = /<!-- ypf-health-alert:v1:([A-Za-z0-9_-]+) -->/;
@@ -11,13 +12,14 @@ export function readAlert(issue) {
 export function collectAlerts(report) {
   const alerts = new Map();
   const add = (category, page, resource, viewport, evidence, result = null) => {
+    if (result && result.confirmation?.required !== false && !result.confirmedSignals?.includes(signalFor(category, resource))) return;
     const key = keyFor(category, page, resource);
     if (!alerts.has(key)) alerts.set(key, { version: 1, key, category, page: canonical(page), resource: canonical(resource), viewports: [], evidence: [], result, lastRunId: report.id });
     const alert = alerts.get(key); if (!alert.viewports.includes(viewport)) alert.viewports.push(viewport);
     alert.evidence.push({ viewport, ...evidence });
   };
   for (const result of report.results || []) {
-    if (result.executionError) continue;
+    if (result.executionError || accessIsBlocked(result.data)) continue;
     const data = result.data || {};
     if (data.navigationError || data.httpStatus >= 500) add('availability', result.url, result.url, result.viewport, { status: data.httpStatus, error: data.navigationError || `HTTP ${data.httpStatus}` }, result);
     else if (data.httpStatus >= 400 || (result.checks || []).some(c => c.id === 'content' && c.status === 'failed')) add('link', result.url, result.url, result.viewport, { status: data.httpStatus, finalUrl: data.finalUrl, title: data.title }, result);
@@ -25,7 +27,8 @@ export function collectAlerts(report) {
     for (const resource of data.brokenImages || []) add('image', result.url, resource, result.viewport, { error: 'La imagen no pudo decodificarse (naturalWidth=0)' }, result);
   }
   for (const check of report.crawl?.externalChecks || []) {
-    if ([404, 410].includes(check.httpStatus)) add('link', check.url, check.url, 'http', check);
+    if (!check.confirmed || check.accessBlocked) continue;
+    if ([404, 410].includes(check.httpStatus) || check.softError) add('link', check.url, check.url, 'http', check);
     else if (check.httpStatus >= 500 || check.error) add('availability', check.url, check.url, 'http', check);
   }
   return [...alerts.values()];
@@ -38,7 +41,7 @@ export function confirmedRecovered(alert, report) {
   }
   return alert.viewports.every(viewport => {
     const result = report.results?.find(r => canonical(r.url) === alert.page && r.viewport === viewport && !r.executionError);
-    if (!result || result.data.navigationError || !result.data.httpStatus || result.data.httpStatus >= 400) return false;
+    if (!result || accessIsBlocked(result.data) || result.observationStatus === 'unconfirmed' || result.data.navigationError || !result.data.httpStatus || result.data.httpStatus >= 400) return false;
     if ((result.checks || []).some(c => ['navigation', 'content'].includes(c.id) && c.status !== 'healthy')) return false;
     if (alert.category === 'image') {
       // A page not visited, a skipped carousel or an absent resource is not evidence of recovery.
@@ -78,7 +81,7 @@ export async function synchronizeAlerts(client, report, settings) {
     }
     if (existing && existing.meta.lastRunId === report.id) { events.push({ action: 'already-processed', key: alert.key }); continue; }
     if (created >= settings.maxNewPerRun) { events.push({ action: 'deferred-limit', key: alert.key }); continue; }
-    const titleNames = { image: 'Imagen rota', link: 'Enlace con error', availability: 'Página inaccesible' };
+    const titleNames = { image: 'Imagen que no carga en el monitor', link: 'Página con error en el monitor', availability: 'Página inaccesible desde el monitor' };
     const title = `[Salud YPF] ${titleNames[alert.category]} · ${alert.resource}`.slice(0, 240);
     if (existing) {
       const issue = await client.editIssue(existing.issue.number, { state: 'open', title, body: alertBody(alert, report) });

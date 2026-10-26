@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { observationSignals } from '../src/confirmation.js';
 import { collectAlerts, synchronizeAlerts } from '../src/alerts.js';
 const page = 'https://www.ypf.com/';
 const image = 'https://www.ypf.com/images/photo.webp';
 const good = (viewport = 'desktop') => ({ url: page, viewport, status: 'healthy', checks: [{ id: 'navigation', status: 'healthy' }, { id: 'content', status: 'healthy' }], data: { httpStatus: 200, finalUrl: page, thirdPartyErrors: [], resourceErrors: [], brokenImages: [], loadedImageResources: [image] } });
 const bad = (viewport = 'desktop') => { const r = good(viewport); r.status = 'degraded'; r.data.loadedImageResources = []; r.data.resourceErrors = [{ type: 'image', url: image, status: 404, error: 'HTTP 404' }]; r.data.brokenImages = [image]; return r; };
-const report = (results, id = 'run-1') => ({ id, status: 'degraded', executionStatus: 'completed', timestamp: '2026-10-26T12:00:00Z', runUrl: 'https://github.com/example/repo/actions/runs/1', results });
+const report = (results, id = 'run-1') => ({ id, status: 'degraded', executionStatus: 'completed', timestamp: '2026-10-26T12:00:00Z', runUrl: 'https://github.com/example/repo/actions/runs/1', results: results.map(r => ({ ...r, confirmation: { required: true }, confirmedSignals: observationSignals(r) })) });
 const settings = { label: 'ypf-health', assignees: ['manuelsblanco'], maxNewPerRun: 20 };
 function mock() {
   const issues = [], comments = [];
@@ -20,7 +21,7 @@ function mock() {
 test('imagen rota se agrupa entre DOM, red y viewports y se asigna al destinatario', async () => {
   const { client, issues } = mock(); await synchronizeAlerts(client, report([bad(), bad('mobile')]), settings);
   assert.equal(issues.length, 1); assert.deepEqual(issues[0].assignees, ['manuelsblanco']);
-  assert.match(issues[0].body, /desktop, mobile/); assert.match(issues[0].title, /Imagen rota/);
+  assert.match(issues[0].body, /desktop, mobile/); assert.match(issues[0].title, /Imagen que no carga/);
 });
 test('no repite avisos de la misma incidencia en cada ejecución', async () => {
   const { client, issues, comments } = mock(); await synchronizeAlerts(client, report([bad()]), settings);

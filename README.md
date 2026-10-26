@@ -96,6 +96,22 @@ Las orientaciones sobre ORB, cancelaciones y URLs GitHub `/blob/` son hipótesis
 
 Copiar no envía nada a una IA. El usuario decide dónde pegar el diagnóstico. Se ocultan valores de consulta de URLs salvo versión y mensajes/códigos de error; no se recopilan cookies, cabeceras de autorización ni cuerpos de peticiones. Se conservan únicamente cabeceras de respuesta permitidas. Si el navegador rechaza el portapapeles, se abre un cuadro para copiar el texto manualmente.
 
+## Evitar falsos positivos
+
+Las comprobaciones corren en Chromium headless dentro de Actions. El comportamiento puede variar con navegador, ubicación, IP de salida, cachés y controles de acceso. Cambiar el user-agent o ignorar la seguridad del navegador no confirma ni corrige la causa.
+
+- Por defecto, una página con incidencias se revisa otra vez en un contexto nuevo (`confirmation.attempts: 2`, `delayMs: 1000`). Se conservan los resultados, capturas y trazas de cada intento. Los gráficos reflejan la observación final; los intentos previos están en el detalle.
+- Las alertas de imagen/enlace/disponibilidad requieren que el mismo síntoma/recurso se observe en ambos intentos. Si desaparece, se registra como recuperado al reintentar. Si cambia, queda sin confirmar.
+- `Request Rejected`, `Access Denied`, desafíos conocidos y HTTP 401/403/429 se clasifican como **no verificables desde el monitor**. No se presentan como falta de CSS, enlace roto o caída global.
+- ORB sin respuesta HTTP y cancelaciones ambiguas no bastan para activar una alerta de imagen rota. Se conservan como evidencia para investigación.
+- Para imágenes con `naturalWidth=0` se intenta `decode()` y se comprueba la estabilidad de la fuente. Una dimensión intrínseca desconocida, un cambio de `src` o un timeout de decodificación no se afirman como imagen rota.
+- Las páginas descubiertas no heredan supuestos de diseño de la portada: no se exige que tengan una cantidad mínima de CSS, texto o un título específico. Se comprueban los recursos que declaran y los errores observados.
+- Los eventos repetidos del mismo recurso se agrupan y conservan su número de apariciones y fases, sin contarlos como recursos distintos. Los enlaces externos con errores también se repiten antes de alertar. No se cierran incidencias al recibir una pantalla de acceso rechazado.
+- La copia de un error incluye sus eventos de red relacionados aunque la lista de imágenes contenga solo strings. El diagnóstico también muestra qué otras páginas explican el estado global.
+- Las ejecuciones sin verificación suficiente y los registros anteriores a esta política de confirmación se excluyen del porcentaje de muestras operativas. Los históricos anteriores se conservan sin reescribir sus observaciones originales. No se ocultan los datos originales ni se convierten los bloqueos en un estado saludable.
+
+Estas medidas reducen falsas alarmas, no garantizan cero falsos positivos ni detectan todos los problemas posibles. Si un recurso funciona desde una computadora pero falla repetidamente desde Actions, validar con el equipo del sitio los permisos y la ubicación de red del runner, y contrastar la captura y la traza. No se evade un bloqueo de acceso.
+
 ## Configuración
 
 Editar `config.json`:

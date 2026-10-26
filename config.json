@@ -70,12 +70,13 @@
       }
     ],
     "discoveredPage": {
-      "titlePattern": ".+",
-      "requiredSelectors": [
+      "titlePattern": ".*",
+      "requiredSelectors": [],
+      "minimumTextLength": 0,
+      "minimumLoadedStylesheets": 0,
+      "requiredPresentSelectors": [
         "body"
-      ],
-      "minimumTextLength": 80,
-      "minimumLoadedStylesheets": 1
+      ]
     },
     "includeSubdomains": true
   },
@@ -93,5 +94,9 @@
       "manuelsblanco"
     ],
     "maxNewPerRun": 20
+  },
+  "confirmation": {
+    "attempts": 2,
+    "delayMs": 1000
   }
 }

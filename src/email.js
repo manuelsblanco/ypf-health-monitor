@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readAlert, setAlertMailState } from './alerts.js';
+import { readAlert, setAlertMailState, collectAlerts } from './alerts.js';
 export function emailConfiguration(env = process.env) {
   const transport = env.EMAIL_TRANSPORT || 'disabled';
   if (transport === 'disabled') return { enabled: false };
@@ -38,7 +38,8 @@ export async function deliverMail(config, message, dependencies = {}) {
 export async function sendPendingEmails(client, settings, config, report, send = deliverMail) {
   if (!config.enabled) return { enabled: false, pending: null, sent: 0 };
   const issues = await client.listIssues(settings.label);
-  const pending = issues.map(issue => ({ issue, meta: readAlert(issue) })).filter(x => x.meta && !x.meta.mailDelivered)
+  const currentlyConfirmed = new Set(collectAlerts(report).map(alert => alert.key));
+  const pending = issues.map(issue => ({ issue, meta: readAlert(issue) })).filter(x => x.meta && !x.meta.mailDelivered && (x.issue.state === 'open' ? currentlyConfirmed.has(x.meta.key) : x.meta.mailEvent === 'resolved'))
     .sort((a, b) => a.meta.key.localeCompare(b.meta.key)).slice(0, 40);
   if (!pending.length) return { enabled: true, pending: 0, sent: 0 };
   const opened = pending.filter(x => x.issue.state === 'open');
