@@ -14,9 +14,12 @@
     "preview": "node src/serve.js",
     "test:browser": "node --test tests/browser.integration.js",
     "monitor:dfs": "CRAWL_STRATEGY=dfs node src/run.js",
-    "test:dashboard": "node --test tests/dashboard.integration.js"
+    "test:dashboard": "node --test tests/dashboard.integration.js",
+    "notify": "node src/notify.js",
+    "alerts:preview": "node src/notify.js --dry-run"
   },
   "dependencies": {
-    "playwright": "1.58.2"
+    "playwright": "1.58.2",
+    "nodemailer": "10.2.1"
   }
 }

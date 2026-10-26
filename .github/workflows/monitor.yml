@@ -130,3 +130,43 @@ jobs:
         env:
           HEALTH_POLICY: ${{ inputs.health_policy || vars.HEALTH_POLICY || 'report' }}
         run: npm run check:health
+
+  notifications:
+    needs: [monitor, deploy]
+    if: always() && needs.monitor.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ypf-health-${{ github.run_id }}
+          path: results
+      - run: npm ci
+      - name: Notificar imágenes, enlaces y páginas inaccesibles
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EMAIL_TRANSPORT: ${{ vars.EMAIL_TRANSPORT || 'disabled' }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_ASSIGNEES: ${{ vars.ALERT_ASSIGNEES || github.repository_owner }}
+        run: npm run notify
+      - name: Guardar registro de alertas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ypf-alerts-${{ github.run_id }}
+          path: results/alerts.json
+          retention-days: 14
+          if-no-files-found: warn

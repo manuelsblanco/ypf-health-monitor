@@ -22,6 +22,7 @@ async function inspectPage(browser, target, viewport, config, outputDir) {
   const observationStart = Date.now();
   let phase = 'navigation';
   const responses = new WeakMap();
+  const loadedImages = new Set();
   const requestContext = req => {
     const chain = []; let current = req;
     while (current) { chain.unshift({ url: current.url(), status: responses.get(current)?.status ?? null }); current = current.redirectedFrom(); }
@@ -47,6 +48,7 @@ async function inspectPage(browser, target, viewport, config, outputDir) {
     const mime = headers['content-type'] || '';
     const safeHeaders = Object.fromEntries(['content-type','content-length','x-content-type-options','cross-origin-resource-policy','access-control-allow-origin','cache-control'].filter(key => headers[key]).map(key => [key, headers[key]]));
     responses.set(req, { status: response.status(), mime, headers: safeHeaders });
+    if (type === 'image' && response.status() >= 200 && response.status() < 300 && mime.startsWith('image/') && loadedImages.size < 1000) { loadedImages.add(url); loadedImages.add(original(req)); }
     const wrongMime = (type === 'stylesheet' && !mime.includes('text/css')) ||
       (type === 'script' && mime.includes('text/html')) ||
       (type === 'image' && mime.includes('text/html')) ||
@@ -144,6 +146,7 @@ async function inspectPage(browser, target, viewport, config, outputDir) {
     await context.close();
   }
   data.resourceErrors = [...new Map(data.resourceErrors.map(x => [JSON.stringify(x), x])).values()];
+  data.loadedImageResources = [...loadedImages];
   const assessment = assess(data, target, config);
   if (data.inspectionError) { assessment.status = 'failed'; assessment.checks.push({ id: 'monitor', status: 'failed', message: 'La comprobación no pudo completarse', details: [data.inspectionError] }); }
   return { targetId: target.id, name: target.name, url: target.url, viewport, ...assessment, executionError: data.inspectionError, data, screenshot, trace };

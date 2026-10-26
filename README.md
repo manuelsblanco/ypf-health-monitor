@@ -50,6 +50,42 @@ El panel muestra estado de las páginas revisadas, gráficos de carga e incidenc
 
 La proporción de muestras saludables no representa disponibilidad continua. El panel distingue páginas visitadas de páginas descubiertas pendientes. No presenta los enlaces pendientes como verificados.
 
+## Alertas automáticas de imágenes, enlaces y disponibilidad
+
+El job `notifications` ejecuta **GitHub CLI dentro de Actions**, usando `GITHUB_TOKEN` con `issues: write`. No requiere ejecutar comandos en una computadora personal para cada comprobación. Los Issues funcionan sin SMTP; el envío directo a dos correos requiere configurar un remitente SMTP o Resend una sola vez.
+
+- Crea Issues con la etiqueta `ypf-health` y los asigna a `manuelsblanco` por defecto. La variable de repositorio `ALERT_ASSIGNEES` permite cambiar los destinatarios (usuarios de GitHub separados por comas).
+- Avisa sobre imágenes rotas o bloqueadas, páginas con errores HTTP/soft 404 y páginas inaccesibles desde el runner. No afirma que una página esté caída para todos los usuarios.
+- Los enlaces externos se comprueban por HTTP, hasta el límite `crawl.maxExternalLinks`; no se recorren sus sitios. Errores 404/410, 5xx y fallos de conexión generan alertas; un 403 de terceros no se considera por sí solo un enlace roto.
+- Deduplica por página/recurso/incidencia y agrupa viewports. La identidad del recurso conserva sus parámetros mediante un hash; los valores no se exponen en el Issue.
+- No añade comentarios si el mismo problema persiste. Si reaparece tras cerrarse, reabre el Issue existente.
+- Solo cierra alertas tras volver a revisar todas las vistas afectadas. Para una imagen requiere evidencia positiva de que el mismo recurso volvió a cargar; una página no recorrida, un estado de carrusel omitido o un recurso retirado no se consideran recuperación automática.
+- No genera alertas por analítica de terceros ni por `ERR_ABORTED` ambiguos. Las incidencias JavaScript/CSS siguen disponibles en el dashboard, pero estas notificaciones se centran en imágenes, enlaces y disponibilidad.
+- Limita a 20 altas/reaperturas y 20 recuperaciones por ejecución. Los casos restantes se revisan en ejecuciones posteriores; `results/alerts.json` registra las acciones.
+- Un error del envío de alertas queda rojo como fallo técnico, sin impedir que el job de despliegue publique el informe.
+
+**Notificaciones de GitHub:** los Issues asignados notifican según las preferencias del usuario en https://github.com/settings/notifications. Ese email lo gestiona GitHub; también están en https://github.com/notifications.
+
+**Email directo opcional:** el código admite múltiples destinatarios mediante SMTP o Resend y envía un único resumen por cambios de estado. Está desactivado mientras no se configure `EMAIL_TRANSPORT`. Las direcciones no se guardan en el repositorio público. El archivo local ignorado `.email-recipients` permite cargar los destinatarios elegidos como secreto sin publicarlos.
+
+Desde una terminal con `gh` autenticado, elegir uno de estos proveedores:
+
+```bash
+bash scripts/configure-email.sh gmail
+# o: bash scripts/configure-email.sh smtp
+# o: bash scripts/configure-email.sh resend
+```
+
+El script carga `ALERT_EMAIL_TO` y pide el remitente, guarda las credenciales en GitHub Secrets mediante los prompts de `gh` y activa la variable `EMAIL_TRANSPORT` al terminar. No pegar contraseñas en el chat. Para Gmail se usa una contraseña de aplicación y `smtp.gmail.com:465`; para otro servidor se requiere configuración SMTP autorizada; Resend exige una clave y un remitente permitido/verificado por el servicio.
+
+Secrets utilizados: `ALERT_EMAIL_TO`, `ALERT_EMAIL_FROM` y, según el proveedor, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` o `RESEND_API_KEY`. La variable de repositorio `EMAIL_TRANSPORT` acepta `disabled`, `smtp` o `resend`. No se usa `GITHUB_TOKEN` para enviar email.
+
+La aceptación por el proveedor se marca en la metadata del Issue, sin almacenar direcciones ni credenciales. Si el envío falla, queda pendiente para la siguiente ejecución. Los envíos SMTP no garantizan exactamente una entrega si el proceso se interrumpe después de la aceptación y antes de confirmarla. La aceptación tampoco confirma llegada a la bandeja de entrada; revisar spam y restricciones del remitente. Las pruebas del repositorio usan un transporte local sin red: no envían mensajes reales.
+
+Las alertas se consultan en https://github.com/manuelsblanco/ypf-health-monitor/issues?q=is%3Aissue%20label%3Aypf-health y desde el enlace **Ver alertas** del dashboard.
+
+Configuración: `notifications.enabled`, `label`, `assignees` y `maxNewPerRun` en `config.json`. Para inspeccionar incidencias localmente **sin enviar notificaciones**: `npm run alerts:preview`. El envío real se reserva a Actions. No se publican Issues de prueba simulados.
+
 ## Identidad visual y diagnósticos
 
 El estilo toma como referencia la guía de identidad visual YPF, versión 1.0, noviembre de 2024, proporcionada localmente. Se aplica el azul web `#0451E4`, blanco, grises `#E6E6E6`, `#AAAAAA` y `#3C3C3C`, y la familia DIN. Las variantes DIN Regular/Bold/Black y el logo proceden de los recursos publicados por YPF y se sirven desde `web/`, junto con el favicon oficial, sin depender de una hoja de estilos externa. Verde, ámbar y rojo se reservan para estados funcionales. El panel es un prototipo de monitoreo, no un sitio oficial de YPF.
@@ -121,7 +157,7 @@ git push origin main
 
 El script `scripts/publish-github.sh` es únicamente para crear un repositorio nuevo. Se detiene si ya existe `origin` o el repositorio.
 
-GitHub puede demorar u omitir schedules por carga y desactivarlos en repositorios públicos tras 60 días sin actividad. Los fallos se ven en el dashboard y Actions; no se configuraron correos ni mensajes a terceros.
+GitHub puede demorar u omitir schedules por carga y desactivarlos en repositorios públicos tras 60 días sin actividad. Los fallos se ven en el dashboard y Actions; el job de alertas gestiona Issues asignados. El correo directo queda pendiente de configurar el remitente y sus secretos; no hay mensajería externa configurada.
 
 ## Referencias
 

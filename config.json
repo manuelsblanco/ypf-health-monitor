@@ -53,7 +53,7 @@
       "/error\\."
     ],
     "queryParameters": [],
-    "checkExternalLinks": false,
+    "checkExternalLinks": true,
     "maxExternalLinks": 20,
     "safeInteractions": [
       {
@@ -85,5 +85,13 @@
     "^(?:page not found|not found)(?:[.!]|$)",
     "^error\\s*(?:404|500|503)\\b",
     "^(?:404|500|503)(?:\\s|$)"
-  ]
+  ],
+  "notifications": {
+    "enabled": true,
+    "label": "ypf-health",
+    "assignees": [
+      "manuelsblanco"
+    ],
+    "maxNewPerRun": 20
+  }
 }
