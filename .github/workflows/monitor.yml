@@ -1,0 +1,145 @@
+name: Monitor YPF y publicar panel
+on:
+  schedule:
+    # UTC: seis veces al día. En Argentina: 01:17, 05:17, 09:17, 13:17, 17:17 y 21:17.
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Publicar demo simulada o ejecutar monitoreo real
+        type: choice
+        options: [live, demo]
+        default: live
+      max_pages:
+        description: Máximo de páginas para una prueba manual real
+        type: choice
+        options: ['3', '10', '30', '100']
+        default: '3'
+      strategy:
+        description: Estrategia del recorrido
+        type: choice
+        options: [bfs, dfs]
+        default: bfs
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ypf-health-production
+  cancel-in-progress: false
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verificar lógica del monitor
+        run: npm test
+      - name: Construir demo y verificar dashboard en Chromium
+        run: |
+          npm run demo
+          npm run test:dashboard
+      - name: Recuperar historial persistente
+        if: inputs.mode != 'demo'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p history
+          if git ls-remote --exit-code --heads origin monitor-data > /tmp/monitor-ref; then
+            git fetch --depth=1 origin monitor-data
+            git show FETCH_HEAD:history.json > history/history.json
+          else
+            code=$?
+            if [ "$code" -ne 2 ]; then exit "$code"; fi
+            echo '[]' > history/history.json
+          fi
+      - name: Recorrer y medir el sitio
+        if: inputs.mode != 'demo'
+        env:
+          CRAWL_STRATEGY: ${{ inputs.strategy || 'bfs' }}
+          MAX_PAGES: ${{ inputs.max_pages || (github.event_name == 'push' && '3') || '30' }}
+        run: npm run monitor
+      - name: Generar dashboard
+        if: inputs.mode != 'demo'
+        run: npm run build
+      - name: Preparar publicación de demostración
+        if: inputs.mode == 'demo'
+        run: |
+          mkdir -p results public/demo
+          cp -R public-demo/. public/
+          cp -R public-demo/. public/demo/
+          cp public-demo/data/latest.json results/latest.json
+      - name: Guardar historial sin modificar el código
+        if: inputs.mode != 'demo'
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          blob=$(git hash-object -w history/history.json)
+          tree=$(printf '100644 blob %s\thistory.json\n' "$blob" | git mktree)
+          if [ -s /tmp/monitor-ref ]; then
+            parent=$(git rev-parse FETCH_HEAD)
+            commit=$(printf 'Actualizar historial de salud\n' | git commit-tree "$tree" -p "$parent")
+          else
+            commit=$(printf 'Iniciar historial de salud\n' | git commit-tree "$tree")
+          fi
+          git push origin "$commit:refs/heads/monitor-data"
+      - name: Resumen de ejecución
+        if: always()
+        shell: bash
+        run: |
+          if [ -f results/latest.json ]; then
+            node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("results/latest.json")); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Salud YPF: ${r.status}\n\n${r.results.length} controles de página/viewport.\n\nRevisar el panel publicado y los artefactos para el detalle.\n`);'
+          fi
+      - name: Evidencias y trazas Playwright
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ypf-health-${{ github.run_id }}
+          path: results/
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+  deploy:
+    needs: monitor
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Publicar panel incluso si la salud es mala
+        id: deployment
+        uses: actions/deploy-pages@v4
+  health-status:
+    needs: [monitor, deploy]
+    if: always() && needs.monitor.result == 'success' && inputs.mode != 'demo'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ypf-health-${{ github.run_id }}
+          path: results
+      - name: Marcar workflow como fallido ante incidencias
+        run: npm run check:health

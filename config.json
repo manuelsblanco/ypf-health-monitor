@@ -1,0 +1,89 @@
+{
+  "timeoutMs": 45000,
+  "settleMs": 5000,
+  "slowPageMs": 12000,
+  "historyDays": 90,
+  "maxRuns": 600,
+  "resourceHosts": [
+    "www.ypf.com",
+    "ypf.com"
+  ],
+  "ignoreUrlPatterns": [],
+  "targets": [
+    {
+      "id": "ypf-home",
+      "name": "YPF · Inicio",
+      "url": "https://www.ypf.com/",
+      "titlePattern": "YPF",
+      "requiredSelectors": [
+        "main, [role=\"main\"]",
+        "footer, [role=\"contentinfo\"]"
+      ],
+      "minimumTextLength": 200,
+      "minimumLoadedStylesheets": 1,
+      "viewports": [
+        "desktop",
+        "mobile"
+      ],
+      "requiredPresentSelectors": [
+        "header, [role=\"banner\"]"
+      ]
+    }
+  ],
+  "crawl": {
+    "enabled": true,
+    "strategy": "bfs",
+    "allowedHosts": [
+      "www.ypf.com",
+      "ypf.com"
+    ],
+    "maxPages": 30,
+    "maxDepth": 4,
+    "maxDurationMs": 900000,
+    "maxDiscoveredUrls": 3000,
+    "maxScrollSteps": 20,
+    "maxScrollMs": 10000,
+    "excludePatterns": [
+      "/logout",
+      "/signout",
+      "/salir",
+      "/login",
+      "/buscar",
+      "/search",
+      "/error\\."
+    ],
+    "queryParameters": [],
+    "checkExternalLinks": false,
+    "maxExternalLinks": 20,
+    "safeInteractions": [
+      {
+        "selector": "button[aria-label=\"menu principal\"]",
+        "maxClicks": 1
+      },
+      {
+        "selector": "button[aria-label=\"banner siguiente\"]",
+        "maxClicks": 4
+      },
+      {
+        "selector": "button[aria-label=\"tarjeta siguiente\"]",
+        "maxClicks": 3
+      }
+    ],
+    "discoveredPage": {
+      "titlePattern": ".+",
+      "requiredSelectors": [
+        "body"
+      ],
+      "minimumTextLength": 80,
+      "minimumLoadedStylesheets": 1
+    },
+    "includeSubdomains": true
+  },
+  "includeResourceSubdomains": true,
+  "errorPagePatterns": [
+    "^p[aá]gina (?:no (?:encontrada|disponible)|inexistente)(?:[.!]|$)",
+    "^(?:page not found|not found)(?:[.!]|$)",
+    "^error\\s*(?:404|500|503)\\b",
+    "^(?:404|500|503)(?:\\s|$)"
+  ]
+}
