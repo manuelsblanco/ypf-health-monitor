@@ -180,3 +180,13 @@ GitHub puede demorar u omitir schedules por carga y desactivarlos en repositorio
 - https://playwright.dev/docs/api/class-page
 - https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages
 - https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
+
+### Prioridad de avisos y recorridos funcionales
+
+Las incidencias confirmadas de disponibilidad tienen prioridad crítica; los enlaces y los recorridos funcionales, alta. Se notifican en la próxima ejecución que los confirme (el muestreo programado sigue siendo cada cuatro horas). Las imágenes tienen prioridad media y se agrupan por correo en el primer ciclo a partir de las 12:00 UTC, como máximo un resumen diario. La hora se configura en `notifications.dailyDigestHourUtc`. Las recuperaciones siguen el mismo canal. Se mantiene el acuse de envío en los metadatos de los issues; un error de correo conserva los pendientes.
+
+Los issues siguen registrando las incidencias al detectarlas. Las imágenes nuevas se registran sin asignación urgente; los avisos propios de GitHub también dependen de la configuración de seguimiento del repositorio. La agrupación diaria corresponde al canal de correo. El envío requiere configurar un remitente y los secretos SMTP o Resend; este cambio no activa por sí solo un proveedor de correo.
+
+La portada incluye tres recorridos de solo lectura configurados en `targets[].functionalChecks`: abrir el menú móvil y comprobar su panel; seleccionar otra diapositiva y verificar el cambio de estado y desplazamiento del banner; pulsar el enlace institucional a Inversores en una página separada y verificar destino y respuesta HTTP. No dependen del texto de las noticias ni de la imagen de campaña. Los selectores de estos controles sí deben actualizarse si cambia su estructura.
+
+Los resultados aparecen entre las comprobaciones del dashboard y en los detalles copiables. Un control ausente, un bloqueo de acceso o un tiempo de navegación sin evidencia concluyente se informa como no verificado. Un fallo funcional debe repetirse en dos observaciones antes de generar una alerta. Solo una ejecución posterior del recorrido con éxito permite cerrarla. Los tests controlados se ejecutan con Chromium dentro de Actions mediante `npm run test:browser`.

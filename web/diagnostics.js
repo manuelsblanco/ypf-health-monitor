@@ -58,6 +58,7 @@
         javascript: options.thirdPartyOnly ? [] : data.pageErrorDetails || data.pageErrors || [],
         console: options.thirdPartyOnly ? [] : data.consoleErrors || [],
         cancelledDuringCleanup: data.cleanupCancellations || [],
+        functionalResults: options.thirdPartyOnly ? [] : data.functionalResults || [],
         unverifiedControls: data.unavailableInteractions || [], scrollComplete: data.scrollComplete,
         screenshot: result.screenshot ? new URL(`evidence/${result.screenshot}`, base).href : null,
         traceFileInActionsArtifact: result.trace || null,

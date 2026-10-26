@@ -12,6 +12,7 @@ export function observationSignals(result) {
   if (!result || result.executionError || accessIsBlocked(result.data)) return [];
   const data = result.data || {};
   const signals = [];
+  for (const check of data.functionalResults || []) if (check.status === 'failed') signals.push(signalFor('functional', check.id));
   if (data.navigationError || data.httpStatus >= 500) signals.push(signalFor('availability', result.url));
   else if (data.httpStatus >= 400 || result.checks?.some(c => c.id === 'content' && c.status === 'failed')) signals.push(signalFor('link', result.url));
   for (const url of data.brokenImages || []) if (!imageEvidenceIsAmbiguous(data, url)) signals.push(signalFor('image', url));
@@ -25,7 +26,7 @@ export function applyConfirmation(observations, required = true) {
   let common = new Set(valid.length ? observationSignals(valid[0]) : []);
   for (const result of valid.slice(1)) { const keys = new Set(observationSignals(result)); common = new Set([...common].filter(key => keys.has(key))); }
   const sufficient = !required || observations.length >= 2 && valid.length === observations.length;
-  const otherConfirmed = sufficient && (last.checks || []).some(check => !['resources', 'images', 'pending-images', 'image-verification', 'access'].includes(check.id) && check.status !== 'healthy' && valid.every(r => r.checks?.some(c => c.id === check.id && c.status !== 'healthy')));
+  const otherConfirmed = sufficient && (last.checks || []).some(check => !['resources', 'images', 'pending-images', 'image-verification', 'functional-verification', 'access'].includes(check.id) && check.status !== 'healthy' && valid.every(r => r.checks?.some(c => c.id === check.id && c.status !== 'healthy')));
   const confirmedSignals = sufficient ? [...common] : [];
   let classification;
   if (last.executionError) classification = 'execution-error';
@@ -37,6 +38,7 @@ export function applyConfirmation(observations, required = true) {
   const checks = (last.checks || []).map(check => {
     let confirmed = !required || sufficient && valid.every(r => r.checks?.some(c => c.id === check.id && c.status !== 'healthy'));
     if (check.id === 'images') confirmed = sufficient && (last.data.brokenImages || []).every(url => common.has(signalFor('image', url)));
+    if (check.id === 'functional-verification') confirmed = false;
     return { ...check, confirmed };
   });
   if (classification === 'recovered-on-retry') checks.push({ id: 'confirmation', status: 'healthy', message: 'La incidencia inicial no se reprodujo al repetir la comprobación', details: [] });

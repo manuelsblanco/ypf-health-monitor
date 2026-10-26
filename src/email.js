@@ -39,8 +39,14 @@ export async function sendPendingEmails(client, settings, config, report, send =
   if (!config.enabled) return { enabled: false, pending: null, sent: 0 };
   const issues = await client.listIssues(settings.label);
   const currentlyConfirmed = new Set(collectAlerts(report).map(alert => alert.key));
+  const now = new Date(report.timestamp || Date.now());
+  const day = now.toISOString().slice(0, 10);
+  const digestAlreadySent = issues.some(issue => { const meta = readAlert(issue); return meta?.mailChannel === 'daily' && meta.mailDeliveredAt?.startsWith(day); });
+  const digestDue = now.getUTCHours() >= (settings.dailyDigestHourUtc ?? 0) && !digestAlreadySent;
+  const isDaily = meta => (meta.priority || (meta.category === 'image' ? 'medium' : 'high')) === 'medium';
   const pending = issues.map(issue => ({ issue, meta: readAlert(issue) })).filter(x => x.meta && !x.meta.mailDelivered && (x.issue.state === 'open' ? currentlyConfirmed.has(x.meta.key) : x.meta.mailEvent === 'resolved'))
-    .sort((a, b) => a.meta.key.localeCompare(b.meta.key)).slice(0, 40);
+    .filter(x => !isDaily(x.meta) || digestDue)
+    .sort((a, b) => Number(isDaily(a.meta)) - Number(isDaily(b.meta)) || a.meta.key.localeCompare(b.meta.key)).slice(0, 40);
   if (!pending.length) return { enabled: true, pending: 0, sent: 0 };
   const opened = pending.filter(x => x.issue.state === 'open');
   const resolved = pending.filter(x => x.issue.state === 'closed');
@@ -51,6 +57,6 @@ export async function sendPendingEmails(client, settings, config, report, send =
   const idempotencyKey = createHash('sha256').update(pending.map(x => `${x.meta.key}:${x.meta.mailEvent || 'opened'}:${x.meta.lastRunId}`).join('|')).digest('hex');
   await send(config, { subject, text, idempotencyKey });
   // Acknowledge only after acceptance by the provider. Failed deliveries remain pending for the next run.
-  for (const { issue } of pending) await client.editIssue(issue.number, { body: setAlertMailState(issue.body, true) });
+  for (const { issue } of pending) await client.editIssue(issue.number, { body: setAlertMailState(issue.body, true, { mailDeliveredAt: now.toISOString(), mailChannel: isDaily(readAlert(issue)) ? 'daily' : 'immediate' }) });
   return { enabled: true, pending: pending.length, sent: pending.length, recipients: config.to.length };
 }

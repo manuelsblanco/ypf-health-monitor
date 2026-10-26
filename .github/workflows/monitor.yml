@@ -43,6 +43,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Verificar lógica del monitor
         run: npm test
+      - name: Verificar recorridos funcionales y fallos de carga en Chromium
+        run: npm run test:browser
       - name: Verificar dashboard en Chromium
         run: npm run test:dashboard
       - name: Recuperar historial persistente

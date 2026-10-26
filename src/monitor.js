@@ -1,3 +1,4 @@
+import { runFunctionalChecks } from './functional.js';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { applyConfirmation, groupResourceErrors } from './confirmation.js';
@@ -88,6 +89,7 @@ async function inspectPage(browser, target, viewport, config, outputDir, attempt
     await page.waitForTimeout(config.settleMs);
     // Only explicitly allowlisted, non-submitting controls; never click arbitrary links/buttons.
     phase = 'interaction';
+    data.functionalResults = await runFunctionalChecks(page, target.functionalChecks || [], viewport);
     data.interactions = [];
     data.unavailableInteractions = [];
     await collectLinks();

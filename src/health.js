@@ -32,6 +32,10 @@ export function assess(data, target, config) {
   add('layout', data.horizontalOverflow ? 'degraded' : 'healthy', data.horizontalOverflow ? 'Desbordamiento horizontal detectado' : 'Sin desbordamiento horizontal');
   add('javascript', data.pageErrors.length ? 'degraded' : 'healthy', `${data.pageErrors.length} excepciones JavaScript`, data.pageErrors);
   add('console', data.consoleErrors.length ? 'degraded' : 'healthy', `${data.consoleErrors.length} errores de consola`, data.consoleErrors);
+  for (const outcome of data.functionalResults || []) {
+    if (outcome.status === 'not-applicable') continue;
+    add(outcome.status === 'unverified' ? 'functional-verification' : `functional:${outcome.id}`, outcome.status === 'passed' ? 'healthy' : 'degraded', `${outcome.id}: ${outcome.message}`, [outcome]);
+  }
   add('performance', data.domContentLoadedMs > config.slowPageMs ? 'degraded' : 'healthy',
     `DOMContentLoaded: ${data.domContentLoadedMs} ms (umbral ${config.slowPageMs} ms)`);
   return { checks, status: overall(checks) };

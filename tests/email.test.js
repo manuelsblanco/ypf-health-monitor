@@ -49,3 +49,32 @@ test('no envía una alerta pendiente antigua si la comprobación actual no confi
   const result = await sendPendingEmails(client, { label: 'ypf-health' }, emailConfiguration(env), report, async () => { sent++; });
   assert.equal(sent, 0); assert.equal(result.sent, 0); assert.equal(readAlert(issue).mailDelivered, false);
 });
+
+test('difiere imágenes hasta el resumen diario y conserva un único resumen por día', async () => {
+  const { client, issue, report } = pending();
+  const settings = { label: 'ypf-health', dailyDigestHourUtc: 12 };
+  let sends = 0;
+  const send = async () => { sends++; };
+  report.timestamp = '2026-10-26T08:00:00Z';
+  assert.equal((await sendPendingEmails(client, settings, emailConfiguration(env), report, send)).sent, 0);
+  report.timestamp = '2026-10-26T12:17:00Z';
+  assert.equal((await sendPendingEmails(client, settings, emailConfiguration(env), report, send)).sent, 1);
+  assert.equal(readAlert(issue).mailChannel, 'daily');
+  const deliveredIssue = structuredClone(issue);
+  issue.body = metadata({ ...readAlert(issue), mailDelivered: false, mailDeliveredAt: undefined });
+  client.listIssues = async () => [issue, deliveredIssue];
+  report.timestamp = '2026-10-26T16:17:00Z';
+  assert.equal((await sendPendingEmails(client, settings, emailConfiguration(env), report, send)).sent, 0);
+  report.timestamp = '2026-10-27T12:17:00Z';
+  assert.equal((await sendPendingEmails(client, settings, emailConfiguration(env), report, send)).sent, 1);
+  assert.equal(sends, 2);
+});
+
+test('una página caída genera correo urgente sin esperar el resumen diario', async () => {
+  const { client, issue, report } = pending();
+  report.timestamp = '2026-10-26T08:00:00Z';
+  report.results[0].data = { httpStatus: 503 };
+  issue.body = metadata(collectAlerts(report)[0]);
+  assert.equal((await sendPendingEmails(client, { label: 'ypf-health', dailyDigestHourUtc: 12 }, emailConfiguration(env), report, async () => {})).sent, 1);
+  assert.equal(readAlert(issue).mailChannel, 'immediate');
+});

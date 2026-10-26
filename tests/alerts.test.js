@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { observationSignals } from '../src/confirmation.js';
-import { collectAlerts, synchronizeAlerts } from '../src/alerts.js';
+import { collectAlerts, synchronizeAlerts, confirmedRecovered } from '../src/alerts.js';
 const page = 'https://www.ypf.com/';
 const image = 'https://www.ypf.com/images/photo.webp';
 const good = (viewport = 'desktop') => ({ url: page, viewport, status: 'healthy', checks: [{ id: 'navigation', status: 'healthy' }, { id: 'content', status: 'healthy' }], data: { httpStatus: 200, finalUrl: page, thirdPartyErrors: [], resourceErrors: [], brokenImages: [], loadedImageResources: [image] } });
@@ -18,9 +18,9 @@ function mock() {
   };
   return { client, issues, comments };
 }
-test('imagen rota se agrupa entre DOM, red y viewports y se asigna al destinatario', async () => {
+test('imagen rota se agrupa entre DOM, red y viewports y queda registrada sin asignación urgente', async () => {
   const { client, issues } = mock(); await synchronizeAlerts(client, report([bad(), bad('mobile')]), settings);
-  assert.equal(issues.length, 1); assert.deepEqual(issues[0].assignees, ['manuelsblanco']);
+  assert.equal(issues.length, 1); assert.deepEqual(issues[0].assignees, []);
   assert.match(issues[0].body, /desktop, mobile/); assert.match(issues[0].title, /Imagen que no carga/);
 });
 test('no repite avisos de la misma incidencia en cada ejecución', async () => {
@@ -75,4 +75,13 @@ test('no modifica issues manuales aunque copien la marca de una alerta', async (
   const { client, issues } = mock(); await synchronizeAlerts(client, report([bad()]), settings);
   issues[0].user.login = 'human'; await synchronizeAlerts(client, report([good()], 'run-2'), settings);
   assert.equal(issues[0].state, 'open');
+});
+
+test('confirma recorridos funcionales, avisa con prioridad alta y exige recuperación positiva', async () => {
+  const result = { url: 'https://www.ypf.com/', viewport: 'mobile', confirmation: { required: true }, confirmedSignals: ['functional:menu'], data: { httpStatus: 200, functionalResults: [{ id: 'menu', status: 'failed' }] } };
+  const alerts = collectAlerts(report([result]));
+  assert.equal(alerts.length, 1); assert.equal(alerts[0].priority, 'high');
+  assert.equal(confirmedRecovered(alerts[0], report([{ ...result, data: { httpStatus: 200, functionalResults: [{ id: 'menu', status: 'unverified' }] } }])), false);
+  assert.equal(confirmedRecovered(alerts[0], report([{ ...result, data: { httpStatus: 200, functionalResults: [{ id: 'menu', status: 'passed' }] } }])), true);
+  assert.equal(collectAlerts({ ...report([]), results: [{ ...result, confirmedSignals: [] }] }).length, 0);
 });

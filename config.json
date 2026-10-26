@@ -27,6 +27,31 @@
       ],
       "requiredPresentSelectors": [
         "header, [role=\"banner\"]"
+      ],
+      "functionalChecks": [
+        {
+          "id": "menu",
+          "kind": "menu",
+          "selector": "button[aria-label=\"menu principal\"]",
+          "panel": "nav[aria-label=\"menu principal\"]",
+          "viewports": [
+            "mobile"
+          ]
+        },
+        {
+          "id": "banner",
+          "kind": "carousel",
+          "selector": ".carousel-banners .glider-dot:not(.active)",
+          "stateSelector": ".carousel-banners .glider-dot.active",
+          "stateAttribute": "data-index",
+          "motionSelector": ".carousel-banners .glider"
+        },
+        {
+          "id": "investors",
+          "kind": "link",
+          "selector": "main a[aria-label=\"Centro de Inversores\"]",
+          "expectedOrigin": "https://inversores.ypf.com"
+        }
       ]
     }
   ],
@@ -93,7 +118,8 @@
     "assignees": [
       "manuelsblanco"
     ],
-    "maxNewPerRun": 20
+    "maxNewPerRun": 20,
+    "dailyDigestHourUtc": 12
   },
   "confirmation": {
     "attempts": 2,
